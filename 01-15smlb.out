@@ -1,0 +1,47 @@
+Problem 1.15
+
+Mean interarrival time      1.000 minutes
+
+Mean service time 1         0.700 minutes
+
+Mean service time 2         0.900 minutes
+
+Transit-time limits         0.000  2.000 minutes
+
+Length of the simulation 1000.000 minutes
+
+
+Delays in queue, in minutes:
+
+ sampst                         Number
+variable                          of
+ number       Average           values          Maximum          Minimum
+________________________________________________________________________
+
+    1         2.06351          1014.00          12.8196          0.00000 
+
+    2         9.32520          963.000          53.5675          0.00000 
+________________________________________________________________________
+
+
+
+Queue length (1) and server 1 utilization (2):
+
+Transit Queue length (3) and server 2 utilization (4):
+
+  File         Time
+ number       average          Maximum          Minimum
+_______________________________________________________
+
+    1         2.09239          19.0000          0.00000 
+
+    2        0.704193          1.00000          0.00000 
+
+    3         10.6358          58.0000          0.00000 
+
+    4        0.900935          1.00000          0.00000 
+_______________________________________________________
+
+
+
+Time simulation ended:    1000.000 minutes

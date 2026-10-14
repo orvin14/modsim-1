@@ -1,0 +1,60 @@
+Job-shop model
+
+Number of work stations                    5
+
+Number of machines in each station         3    2    4    3    1
+
+Number of job types                        3
+
+Number of tasks for each job type          4    3    5
+
+Distribution function of job types     0.300   0.800   1.000
+
+Mean interarrival time of jobs          0.25 hours
+
+Length of the simulation               365.0 eight-hour days
+
+
+Job type     Work stations on route
+
+   1            3    1    2    5
+
+   2            4    1    3
+
+   3            2    5    1    4    3
+
+
+Job type     Mean service time (in hours) for successive tasks
+
+   1         0.50     0.60     0.85     0.50
+
+   2         1.10     0.80     0.75
+
+   3         1.20     0.25     0.70     0.90     1.00
+
+
+
+Job type     Average total delay in queue
+
+   1                     17.792
+
+   2                      9.043
+
+   3                     23.691
+
+Overall average job total delay =    14.597
+
+
+
+ Work      Average number      Average       Average delay
+station       in queue       utilization        in queue
+
+   1            9.497            0.953            2.361
+
+   2           28.321            0.989           14.089
+
+   3            0.699            0.721            0.174
+
+   4           18.167            0.969            6.490
+
+   5            1.909            0.801            0.950
