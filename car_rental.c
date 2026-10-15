@@ -28,6 +28,7 @@ static Passenger onboard[CAPACITY];
 static int n_onboard, location=3, queue_id[3]={Q1,Q2,Q3};
 static int max_queue[3], max_onboard, departures3;
 static double arrivals[3], q_area[3], q_clock[3];
+static double delay_total[3], delay_max[3], delay_count[3];
 static double bus_area, bus_clock, person_total, person_max, people_done;
 static double stop_total[3], stop_min[3], stop_max[3], stop_count[3];
 static double loop_total, loop_min, loop_max, last_departure3;
@@ -66,8 +67,10 @@ int main(void)
     bus_area+=n_onboard*(HORIZON-bus_clock);
     for(int i=0;i<3;i++) q_area[i]+=list_size[queue_id[i]]*(HORIZON-q_clock[i]);
     fprintf(out,"CAR-RENTAL SHUTTLE - SIMLIB / C - 80 hours\nSeed: 123456789\n");
-    fprintf(out,"\n(a,b) QUEUE STATISTICS\nLocation  Arrivals  Average number  Maximum number\n");
+    fprintf(out,"\n(a) QUEUE LENGTH\nLocation  Arrivals  Average number  Maximum number\n");
     for(int i=0;i<3;i++) fprintf(out,"   %d       %5.0f       %8.3f          %d\n",i+1,arrivals[i],q_area[i]/HORIZON,max_queue[i]);
+    fprintf(out,"\n(b) QUEUE DELAY (minutes)\nLocation  Average  Maximum\n");
+    for(int i=0;i<3;i++) fprintf(out,"   %d       %7.3f  %7.3f\n",i+1,delay_count[i]?delay_total[i]/delay_count[i]:0.0,delay_max[i]);
     fprintf(out,"\n(c) BUS LOAD\nAverage: %.3f people | Maximum: %d people\n",bus_area/HORIZON,max_onboard);
     fprintf(out,"\n(d) STOP TIME BY LOCATION (minutes)\nLocation  Average  Minimum  Maximum\n");
     for(int i=0;i<3;i++) fprintf(out,"   %d       %7.3f  %7.3f  %7.3f\n",i+1,stop_count[i]?stop_total[i]/stop_count[i]:0.0,stop_count[i]?stop_min[i]:0.0,stop_max[i]);
@@ -93,8 +96,8 @@ static void arrival(int loc)
 static void bus_leave(void)
 {
     /* Route: rental (3) -> terminal 1 -> terminal 2 -> rental (3).
-       Distances are 1, 1, and 3 miles; speed is 30 miles/hour. */
-    double miles=(location==3)?1.0:((location==1)?1.0:3.0);
+       Distances are 4.5, 1, and 4.5 miles; speed is 30 miles/hour. */
+    double miles=(location==3)?4.5:((location==1)?1.0:4.5);
     next_location=(location==3)?1:((location==1)?2:3);
     event_schedule(sim_time+miles*60.0/30.0,BUS_ARRIVE);
 }
@@ -130,6 +133,10 @@ static void stop_end(void)
         q_area[location-1]+=list_size[q]*(sim_time-q_clock[location-1]); q_clock[location-1]=sim_time;
         list_remove(FIRST,q);
         q_area[location-1]+=list_size[q]*(sim_time-q_clock[location-1]); q_clock[location-1]=sim_time;
+        /* Queue delay: time from joining the queue until leaving it to board. */
+        double delay=sim_time-transfer[1];
+        delay_total[location-1]+=delay; delay_count[location-1]++;
+        if(delay>delay_max[location-1]) delay_max[location-1]=delay;
         onboard[n_onboard].arrival=transfer[1];
         onboard[n_onboard].origin=location;
         /* Terminal passengers go to rental; rental passengers choose a
