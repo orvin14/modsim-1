@@ -3,8 +3,20 @@
 /*
  * SIMLIB model of the rental-car shuttle.
  * All simulation times are in minutes (80 hours = 4,800 minutes).
- * A1/A2/A3 are passenger-arrival events; BUS_ARRIVE, STOP_END, and BUS_LEAVE
- * move the shuttle through its route. END_RUN stops the model at 80 hours.
+ *
+ * A1/A2/A3 are passenger-arrival events. The bus moves through its route
+ * with these events:
+ *   BUS_ARRIVE   bus reaches a stop and starts unloading
+ *   UNLOAD_DONE  one passenger has finished getting off
+ *   LOAD_DONE    one passenger has finished getting on
+ *   MIN_DWELL    the bus has been at the stop for the minimum 5 minutes
+ *   BUS_LEAVE    bus starts driving to the next stop
+ * END_RUN stops the model at 80 hours.
+ *
+ * At each stop the bus unloads one passenger at a time, then loads one
+ * passenger at a time from the FIFO queue. It leaves once the minimum
+ * dwell time is over and nobody else can board (bus full or queue empty).
+ * People who arrive while the bus is still waiting at their stop board.
  */
 
 #define A1              1
@@ -12,8 +24,10 @@
 #define A3              3
 #define BUS_ARRIVE      4
 #define BUS_LEAVE       5
-#define STOP_END        6
-#define END_RUN         7
+#define UNLOAD_DONE     6
+#define LOAD_DONE       7
+#define MIN_DWELL       8
+#define END_RUN         9
 
 #define Q1              1
 #define Q2              2
@@ -21,10 +35,17 @@
 
 #define HORIZON         4800.0
 #define CAPACITY        20
+#define MIN_DWELL_TIME  5.0
 
 #define STREAM_DEST     4
 #define STREAM_UNLOAD   5
 #define STREAM_LOAD     6
+
+/* What the bus is doing right now. */
+#define TRAVELING       0
+#define UNLOADING       1
+#define LOADING         2
+#define WAITING         3   /* at a stop, nobody boarding, minimum dwell not over */
 
 /* Information kept for each passenger after boarding the bus. */
 typedef struct
@@ -44,14 +65,19 @@ static double bus_area, bus_clock, person_total, person_max, people_done;
 static double stop_total[3], stop_min[3], stop_max[3], stop_count[3];
 static double loop_total, loop_min, loop_max, last_departure3;
 static double trip_total[3], trip_max[3], trip_count[3];
-static double stop_start, dwell, run_unload, onboard_arrival[CAPACITY];
+static double stop_start, onboard_arrival[CAPACITY];
 
-static int unloading, next_location;
+static int bus_state = TRAVELING, min_dwell_over, next_location;
 static FILE *out;
 
 static void arrival(int loc);
 static void bus_arrival(void);
-static void stop_end(void);
+static void unload_next(void);
+static void unload_done(void);
+static void load_next(void);
+static void load_done(void);
+static void min_dwell(void);
+static void depart(void);
 static void bus_leave(void);
 
 int main(void)
@@ -83,12 +109,14 @@ int main(void)
 
         if (event == END_RUN) break;
 
-        if      (event == A1)         arrival(1);
-        else if (event == A2)         arrival(2);
-        else if (event == A3)         arrival(3);
-        else if (event == BUS_ARRIVE) bus_arrival();
-        else if (event == BUS_LEAVE)  bus_leave();
-        else if (event == STOP_END)   stop_end();
+        if      (event == A1)          arrival(1);
+        else if (event == A2)          arrival(2);
+        else if (event == A3)          arrival(3);
+        else if (event == BUS_ARRIVE)  bus_arrival();
+        else if (event == UNLOAD_DONE) unload_done();
+        else if (event == LOAD_DONE)   load_done();
+        else if (event == MIN_DWELL)   min_dwell();
+        else if (event == BUS_LEAVE)   bus_leave();
     }
 
     /* Extend time-weighted queue and bus statistics to the 80-hour cutoff. */
@@ -167,6 +195,9 @@ static void arrival(int loc)
     q_clock[loc - 1] = sim_time;
 
     if (list_size[q] > max_queue[loc - 1]) max_queue[loc - 1] = list_size[q];
+
+    /* A bus that is waiting at this stop picks the new arrival up right away. */
+    if (bus_state == WAITING && location == loc) load_next();
 }
 
 static void bus_leave(void)
@@ -176,55 +207,77 @@ static void bus_leave(void)
     double miles = (location == 3) ? 4.5 : ((location == 1) ? 1.0 : 4.5);
     next_location = (location == 3) ? 1 : ((location == 1) ? 2 : 3);
 
+    bus_state = TRAVELING;
     event_schedule(sim_time + miles * 60.0 / 30.0, BUS_ARRIVE);
 }
 
 static void bus_arrival(void)
 {
-    int kept = 0, loc = next_location;
+    bus_area += n_onboard * (sim_time - bus_clock);
+    bus_clock = sim_time;
+
+    location = next_location;
+    stop_start = sim_time;
+    min_dwell_over = 0;
+
+    /* The bus must spend at least five minutes at each location. */
+    event_schedule(sim_time + MIN_DWELL_TIME, MIN_DWELL);
+
+    unload_next();
+}
+
+/* Start unloading the next passenger bound for this stop (FIFO order).
+   When nobody is left to unload, loading begins. */
+static void unload_next(void)
+{
+    for (int i = 0; i < n_onboard; i++) {
+        if (onboard[i].destination == location) {
+            bus_state = UNLOADING;
+            event_schedule(sim_time + uniform(16.0 / 60.0, 24.0 / 60.0, STREAM_UNLOAD),
+                           UNLOAD_DONE);
+            return;
+        }
+    }
+
+    load_next();
+}
+
+/* The passenger being unloaded has gotten off the bus. */
+static void unload_done(void)
+{
+    int i = 0;
+    double trip;
+
+    /* The passenger being unloaded is the first one bound for this stop. */
+    while (onboard[i].destination != location) i++;
+
+    trip = sim_time - onboard[i].arrival;
+
+    person_total += trip;
+    people_done++;
+
+    trip_total[onboard[i].origin - 1] += trip;
+    trip_count[onboard[i].origin - 1]++;
+
+    if (trip > person_max) person_max = trip;
+    if (trip > trip_max[onboard[i].origin - 1]) trip_max[onboard[i].origin - 1] = trip;
 
     bus_area += n_onboard * (sim_time - bus_clock);
     bus_clock = sim_time;
 
-    location = loc;
-    stop_start = sim_time;
-    run_unload = 0.0;
-    unloading = 0;
+    for (; i < n_onboard - 1; i++) onboard[i] = onboard[i + 1];
+    n_onboard--;
 
-    /* Let off passengers whose destination is this stop. The others stay on. */
-    for (int i = 0; i < n_onboard; i++) {
-        if (onboard[i].destination == loc) {
-            double trip = sim_time - onboard[i].arrival;
-
-            person_total += trip;
-            people_done++;
-
-            trip_total[onboard[i].origin - 1] += trip;
-            trip_count[onboard[i].origin - 1]++;
-
-            if (trip > person_max) person_max = trip;
-            if (trip > trip_max[onboard[i].origin - 1]) trip_max[onboard[i].origin - 1] = trip;
-
-            unloading++;
-        }
-        else
-            onboard[kept++] = onboard[i];
-    }
-    n_onboard = kept;
-
-    /* Unloading is completed before the STOP_END event begins boarding. */
-    run_unload = uniform(16.0 / 60.0, 24.0 / 60.0, STREAM_UNLOAD) * unloading;
-    dwell = run_unload;
-
-    event_schedule(sim_time + run_unload, STOP_END);
+    unload_next();
 }
 
-static void stop_end(void)
+/* Start boarding the first person in this stop's queue if the bus has room.
+   Otherwise leave now, or wait if the minimum dwell time is not over. */
+static void load_next(void)
 {
     int q = queue_id[location - 1];
 
-    /* Board from the front of the location's FIFO queue until the bus is full. */
-    while (n_onboard < CAPACITY && list_size[q] > 0) {
+    if (n_onboard < CAPACITY && list_size[q] > 0) {
         q_area[location - 1] += list_size[q] * (sim_time - q_clock[location - 1]);
         q_clock[location - 1] = sim_time;
 
@@ -233,12 +286,16 @@ static void stop_end(void)
         q_area[location - 1] += list_size[q] * (sim_time - q_clock[location - 1]);
         q_clock[location - 1] = sim_time;
 
-        /* Queue delay: time from joining the queue until leaving it to board. */
+        /* Queue delay: time from joining the queue until boarding starts. */
         double delay = sim_time - transfer[1];
 
         delay_total[location - 1] += delay;
         delay_count[location - 1]++;
         if (delay > delay_max[location - 1]) delay_max[location - 1] = delay;
+
+        /* The person takes a seat as soon as boarding starts. */
+        bus_area += n_onboard * (sim_time - bus_clock);
+        bus_clock = sim_time;
 
         onboard[n_onboard].arrival = transfer[1];
         onboard[n_onboard].origin = location;
@@ -248,17 +305,38 @@ static void stop_end(void)
         onboard[n_onboard].destination =
             (location == 3) ? ((uniform(0.0, 1.0, STREAM_DEST) < 0.583) ? 1 : 2) : 3;
 
-        dwell += uniform(15.0 / 60.0, 25.0 / 60.0, STREAM_LOAD);
         n_onboard++;
+        if (n_onboard > max_onboard) max_onboard = n_onboard;
+
+        bus_state = LOADING;
+        event_schedule(sim_time + uniform(15.0 / 60.0, 25.0 / 60.0, STREAM_LOAD),
+                       LOAD_DONE);
     }
+    else if (min_dwell_over)
+        depart();
+    else
+        bus_state = WAITING;
+}
 
-    if (n_onboard > max_onboard) max_onboard = n_onboard;
+/* The passenger being loaded is seated; look at the queue again. */
+static void load_done(void)
+{
+    load_next();
+}
 
-    bus_area += n_onboard * (sim_time - bus_clock);
-    bus_clock = sim_time;
+/* Five minutes have passed since the bus arrived. */
+static void min_dwell(void)
+{
+    min_dwell_over = 1;
 
-    /* The bus must spend at least five minutes at each location. */
-    if (dwell < 5.0) dwell = 5.0;
+    if (bus_state == WAITING) depart();
+}
+
+/* Nobody else can board and the minimum dwell time is over: record the
+   stop and drive on. */
+static void depart(void)
+{
+    double dwell = sim_time - stop_start;
 
     stop_total[location - 1] += dwell;
     stop_count[location - 1]++;
@@ -268,7 +346,7 @@ static void stop_end(void)
     /* A loop is measured from one departure at rental to the next. */
     if (location == 3) {
         if (last_departure3 > 0.0) {
-            double loop = sim_time + dwell - last_departure3;
+            double loop = sim_time - last_departure3;
 
             loop_total += loop;
             departures3++;
@@ -276,8 +354,8 @@ static void stop_end(void)
             if (departures3 == 1 || loop < loop_min) loop_min = loop;
             if (loop > loop_max) loop_max = loop;
         }
-        last_departure3 = sim_time + dwell;
+        last_departure3 = sim_time;
     }
 
-    event_schedule(stop_start + dwell, BUS_LEAVE);
+    bus_leave();
 }
