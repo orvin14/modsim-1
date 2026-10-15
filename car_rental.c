@@ -12,11 +12,6 @@
  *   MIN_DWELL    the bus has been at the stop for the minimum time
  *   BUS_LEAVE    bus starts driving to the next stop
  *   END_RUN      end of the simulation
- *
- * At each stop the bus unloads one passenger at a time, then loads one at a
- * time from the FIFO queue. It leaves once the minimum dwell time is over
- * and nobody else can board (bus full or queue empty). People who arrive
- * while the bus is waiting at their stop board.
  */
 
 #define A1              1
