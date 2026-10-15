@@ -41,7 +41,7 @@ Jalankan program di PowerShell:
 .\car_rental.exe
 ```
 
-Program menjalankan simulasi selama 80 jam (4.800 menit) dan menulis laporan ke `car_rental.out` pada folder kerja saat program dijalankan. Jalankan dari folder repo agar output berada di folder repo tersebut. Program menggunakan seed bilangan acak tetap supaya hasil dapat diulang.
+Program menjalankan simulasi selama 80 jam (4.800 menit) dan menulis laporan ke `car_rental.out` pada folder kerja saat program dijalankan. Jalankan dari folder repo agar output berada di folder repo tersebut. Program menggunakan seed bilangan acak tetap (stream *s* memakai seed 123456789 + 97 × *s*; seed dicetak di bagian atas laporan) supaya hasil dapat diulang.
 
 ## Model shuttle
 
@@ -51,16 +51,17 @@ Bus mengikuti rute berulang:
 Rental mobil (3) -> Terminal 1 -> Terminal 2 -> Rental mobil (3)
 ```
 
-Model memakai kapasitas bus 20 orang, kecepatan 30 mil/jam, waktu henti minimum 5 menit pada tiap lokasi, dan antrean FIFO yang tidak dibatasi panjangnya. Laju kedatangan penumpang adalah 14 orang/jam di Terminal 1, 10 orang/jam di Terminal 2, dan 24 orang/jam di rental. Penumpang di terminal menuju rental; penumpang di rental memilih Terminal 1 (0,583) atau Terminal 2 (0,417). Rincian asumsi jarak, waktu naik/turun, dan interpretasi soal ada di [deskripsi_masalah.md](deskripsi_masalah.md).
+Jarak antarlokasi adalah 4,5 mil (rental ke Terminal 1), 1 mil (Terminal 1 ke Terminal 2), dan 4,5 mil (Terminal 2 ke rental). Model memakai kapasitas bus 20 orang, kecepatan 30 mil/jam, waktu henti minimum 5 menit pada tiap lokasi, penumpang turun dan naik satu per satu dengan waktu acak masing-masing, dan antrean FIFO yang tidak dibatasi panjangnya. Laju kedatangan penumpang adalah 14 orang/jam di Terminal 1, 10 orang/jam di Terminal 2, dan 24 orang/jam di rental. Penumpang di terminal menuju rental; penumpang di rental memilih Terminal 1 (0,583) atau Terminal 2 (0,417). Rincian asumsi jarak, waktu naik/turun, dan interpretasi soal ada di [deskripsi_masalah.md](deskripsi_masalah.md).
 
 ## Statistik output
 
 Laporan `car_rental.out` menampilkan:
 
 - jumlah kedatangan dan rata-rata/maksimum panjang antrean tiap lokasi;
+- rata-rata/maksimum waktu tunggu di antrean tiap lokasi;
 - rata-rata/maksimum jumlah penumpang di bus;
 - rata-rata, minimum, dan maksimum waktu berhenti bus per lokasi;
 - rata-rata, minimum, dan maksimum waktu dari keberangkatan di rental ke keberangkatan berikutnya dari rental;
-- rata-rata dan maksimum waktu penumpang di dalam sistem, dikelompokkan menurut lokasi asal.
+- rata-rata, minimum, dan maksimum waktu penumpang di dalam sistem (dari datang di antrean sampai selesai turun), dikelompokkan menurut lokasi asal.
 
 Waktu penumpang di dalam sistem hanya dihitung untuk perjalanan yang selesai sebelum batas simulasi 80 jam.

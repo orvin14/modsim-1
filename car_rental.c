@@ -1,22 +1,22 @@
 #include "simlib.h"
 
 /*
- * SIMLIB model of the rental-car shuttle.
- * All simulation times are in minutes (80 hours = 4,800 minutes).
+ * SIMLIB model of the rental-car shuttle. Times are in minutes
+ * (80 hours = 4,800 minutes).
  *
- * A1/A2/A3 are passenger-arrival events. The bus moves through its route
- * with these events:
+ * Events:
+ *   A1/A2/A3     a person arrives at location 1/2/3
  *   BUS_ARRIVE   bus reaches a stop and starts unloading
  *   UNLOAD_DONE  one passenger has finished getting off
  *   LOAD_DONE    one passenger has finished getting on
- *   MIN_DWELL    the bus has been at the stop for the minimum 5 minutes
+ *   MIN_DWELL    the bus has been at the stop for the minimum time
  *   BUS_LEAVE    bus starts driving to the next stop
- * END_RUN stops the model at 80 hours.
+ *   END_RUN      end of the simulation
  *
- * At each stop the bus unloads one passenger at a time, then loads one
- * passenger at a time from the FIFO queue. It leaves once the minimum
- * dwell time is over and nobody else can board (bus full or queue empty).
- * People who arrive while the bus is still waiting at their stop board.
+ * At each stop the bus unloads one passenger at a time, then loads one at a
+ * time from the FIFO queue. It leaves once the minimum dwell time is over
+ * and nobody else can board (bus full or queue empty). People who arrive
+ * while the bus is waiting at their stop board.
  */
 
 #define A1              1
@@ -41,13 +41,15 @@
 #define STREAM_LOAD     5
 #define STREAM_DEST     6
 
-/* What the bus is doing right now. */
+/* Stream s is seeded with SEED_BASE + SEED_STEP * s. */
+#define SEED_BASE       123456789L
+#define SEED_STEP       97L
+
 #define TRAVELING       0
 #define UNLOADING       1
 #define LOADING         2
 #define WAITING         3   /* at a stop, nobody boarding, minimum dwell not over */
 
-/* Information kept for each passenger after boarding the bus. */
 typedef struct
 {
     int destination, origin;
@@ -68,10 +70,6 @@ static double trip_total[3], trip_min[3], trip_max[3], trip_count[3];
 static double stop_start;
 
 static int bus_state = TRAVELING, min_dwell_over, next_location;
-
-/* The bus starts at the rental location and leaves at t = 0, which counts
-   as the first departure for loop times. */
-static int rental_departed = 1;
 static FILE *out;
 
 static void arrival(int loc);
@@ -91,18 +89,15 @@ int main(void)
     out = fopen("car_rental.out", "w");
     if (!out) return 1;
 
-    /* Initialize SIMLIB's event/list machinery and fix all random streams. */
     init_simlib();
     maxatr = 4;
-    for (int s = 1; s <= 6; s++) lcgrandst(123456789L + 97L * s, s); /* fixed streams */
+    for (int s = 1; s <= 6; s++) lcgrandst(SEED_BASE + SEED_STEP * s, s);
 
-    /* Schedule first passenger arrivals. Rates are people/hour, so convert
-       their mean interarrival times to minutes before calling expon(). */
+    /* Mean interarrival time in minutes is 60 / (people per hour). */
     event_schedule(expon(60.0 / 14.0, 1), A1);
     event_schedule(expon(60.0 / 10.0, 2), A2);
     event_schedule(expon(60.0 / 24.0, 3), A3);
 
-    /* The bus starts at the rental location and leaves immediately. */
     event_schedule(0.0, BUS_LEAVE);
     event_schedule(HORIZON, END_RUN);
 
@@ -122,12 +117,15 @@ int main(void)
         else if (event == BUS_LEAVE)   bus_leave();
     }
 
-    /* Extend time-weighted queue and bus statistics to the 80-hour cutoff. */
+    /* Close the time averages at the end of the run. */
     bus_area += n_onboard * (HORIZON - bus_clock);
     for (int i = 0; i < 3; i++)
         q_area[i] += list_size[queue_id[i]] * (HORIZON - q_clock[i]);
 
-    fprintf(out, "CAR-RENTAL SHUTTLE - SIMLIB / C - 80 hours\nSeed: 123456789\n");
+    fprintf(out, "CAR-RENTAL SHUTTLE - SIMLIB / C - 80 hours\n");
+    fprintf(out, "Seeds (stream 1-6, base %ld + %ld * stream):", SEED_BASE, SEED_STEP);
+    for (int s = 1; s <= 6; s++) fprintf(out, " %ld", SEED_BASE + SEED_STEP * s);
+    fprintf(out, "\n");
 
     fprintf(out, "\n(a) QUEUE LENGTH\nLocation  Arrivals  Average number  Maximum number\n");
     for (int i = 0; i < 3; i++)
@@ -185,10 +183,8 @@ static void arrival(int loc)
     int q = queue_id[loc - 1];
     double rate[3] = {14.0, 10.0, 24.0};
 
-    /* Schedule the next arrival at this location (Poisson process). */
     event_schedule(sim_time + expon(60.0 / rate[loc - 1], loc), loc);
 
-    /* Update queue area, then append this person's arrival time at FIFO tail. */
     q_area[loc - 1] += list_size[q] * (sim_time - q_clock[loc - 1]);
     q_clock[loc - 1] = sim_time;
 
@@ -201,14 +197,13 @@ static void arrival(int loc)
 
     if (list_size[q] > max_queue[loc - 1]) max_queue[loc - 1] = list_size[q];
 
-    /* A bus that is waiting at this stop picks the new arrival up right away. */
     if (bus_state == WAITING && location == loc) load_next();
 }
 
 static void bus_leave(void)
 {
-    /* Route: rental (3) -> terminal 1 -> terminal 2 -> rental (3).
-       Distances are 4.5, 1, and 4.5 miles; speed is 30 miles/hour. */
+    /* Route: rental (3) -> terminal 1 -> terminal 2 -> rental (3), with legs
+       of 4.5, 1 and 4.5 miles at 30 miles/hour. */
     double miles = (location == 3) ? 4.5 : ((location == 1) ? 1.0 : 4.5);
     next_location = (location == 3) ? 1 : ((location == 1) ? 2 : 3);
 
@@ -225,14 +220,12 @@ static void bus_arrival(void)
     stop_start = sim_time;
     min_dwell_over = 0;
 
-    /* The bus must spend at least five minutes at each location. */
     event_schedule(sim_time + MIN_DWELL_TIME, MIN_DWELL);
 
     unload_next();
 }
 
-/* Start unloading the next passenger bound for this stop (FIFO order).
-   When nobody is left to unload, loading begins. */
+/* Unload the next passenger bound for this stop; start loading when none are left. */
 static void unload_next(void)
 {
     for (int i = 0; i < n_onboard; i++) {
@@ -247,13 +240,12 @@ static void unload_next(void)
     load_next();
 }
 
-/* The passenger being unloaded has gotten off the bus. */
 static void unload_done(void)
 {
     int i = 0;
     double trip;
 
-    /* The passenger being unloaded is the first one bound for this stop. */
+    /* The passenger just unloaded is the first one bound for this stop. */
     while (onboard[i].destination != location) i++;
 
     trip = sim_time - onboard[i].arrival;
@@ -280,8 +272,8 @@ static void unload_done(void)
     unload_next();
 }
 
-/* Start boarding the first person in this stop's queue if the bus has room.
-   Otherwise leave now, or wait if the minimum dwell time is not over. */
+/* Board the next person in the queue if there is room; otherwise leave,
+   or wait if the minimum dwell time is not over. */
 static void load_next(void)
 {
     int q = queue_id[location - 1];
@@ -295,7 +287,6 @@ static void load_next(void)
         q_area[location - 1] += list_size[q] * (sim_time - q_clock[location - 1]);
         q_clock[location - 1] = sim_time;
 
-        /* Queue delay: time from joining the queue until boarding starts. */
         double delay = sim_time - transfer[1];
 
         delay_total[location - 1] += delay;
@@ -309,8 +300,7 @@ static void load_next(void)
         onboard[n_onboard].arrival = transfer[1];
         onboard[n_onboard].origin = location;
 
-        /* Terminal passengers go to rental; rental passengers choose a
-           terminal using the probabilities given in the problem statement. */
+        /* Terminal passengers go to rental; rental passengers go to terminal 1 with probability 0.583. */
         onboard[n_onboard].destination =
             (location == 3) ? ((uniform(0.0, 1.0, STREAM_DEST) < 0.583) ? 1 : 2) : 3;
 
@@ -327,13 +317,11 @@ static void load_next(void)
         bus_state = WAITING;
 }
 
-/* The passenger being loaded is seated; look at the queue again. */
 static void load_done(void)
 {
     load_next();
 }
 
-/* Five minutes have passed since the bus arrived. */
 static void min_dwell(void)
 {
     min_dwell_over = 1;
@@ -341,8 +329,6 @@ static void min_dwell(void)
     if (bus_state == WAITING) depart();
 }
 
-/* Nobody else can board and the minimum dwell time is over: record the
-   stop and drive on. */
 static void depart(void)
 {
     double dwell = sim_time - stop_start;
@@ -352,19 +338,18 @@ static void depart(void)
     if (stop_min[location - 1] == 0.0 || dwell < stop_min[location - 1]) stop_min[location - 1] = dwell;
     if (dwell > stop_max[location - 1]) stop_max[location - 1] = dwell;
 
-    /* A loop is measured from one departure at rental to the next. */
+    /* Loop time runs from one departure at rental to the next. The bus
+       leaves rental at t = 0, so last_departure3 = 0 starts the first loop. */
     if (location == 3) {
-        if (rental_departed) {
-            double loop = sim_time - last_departure3;
+        double loop = sim_time - last_departure3;
 
-            loop_total += loop;
-            departures3++;
+        loop_total += loop;
+        departures3++;
 
-            if (departures3 == 1 || loop < loop_min) loop_min = loop;
-            if (loop > loop_max) loop_max = loop;
-        }
+        if (departures3 == 1 || loop < loop_min) loop_min = loop;
+        if (loop > loop_max) loop_max = loop;
+
         last_departure3 = sim_time;
-        rental_departed = 1;
     }
 
     bus_leave();
