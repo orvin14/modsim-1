@@ -1,27 +1,33 @@
 CAR-RENTAL SHUTTLE - SIMLIB / C - 80 hours
-Seed: 123456789
+Seeds (stream 1-6, base 123456789 + 97 * stream): 123456886 123456983 123457080 123457177 123457274 123457371
 
-(a,b) QUEUE STATISTICS
+(a) QUEUE LENGTH
 Location  Arrivals  Average number  Maximum number
-   1        1107          3.339          14
-   2         802          2.390          12
-   3        1989          5.767          26
+   1        1107          6.681          23
+   2         802          5.794          24
+   3        1989         12.817          48
+
+(b) QUEUE DELAY (minutes)
+Location  Average  Maximum
+   1        29.097   93.910
+   2        34.935  146.288
+   3        31.048  102.892
 
 (c) BUS LOAD
-Average: 11.544 people | Maximum: 20 people
+Average: 14.635 people | Maximum: 20 people
 
 (d) STOP TIME BY LOCATION (minutes)
 Location  Average  Minimum  Maximum
-   1         5.276    5.000    8.184
-   2         5.031    5.000    6.534
-   3         7.639    5.000   12.372
+   1         7.031    5.000   11.427
+   2         5.584    5.000    8.644
+   3        11.983    5.000   13.648
 
 (e) LOOP: departure from rental to next departure (minutes)
-Average 27.973 | Minimum 20.807 | Maximum 37.046
+Average 44.590 | Minimum 35.000 | Maximum 49.657
 
 (f) PERSON TIME IN SYSTEM BY ARRIVAL LOCATION (minutes)
-Location  Average  Maximum  Completed
-   1        30.721   64.134      1100
-   2        23.670   52.193       798
-   3        23.465   55.693      1977
-Overall: average 25.567 | maximum 64.134 | completed trips 3875
+Location  Average  Minimum  Maximum  Completed
+   1        49.629   19.615  114.556      1094
+   2        50.262   13.397  162.192       777
+   3        48.980   11.022  125.544      1972
+Overall: average 49.424 | minimum 11.022 | maximum 162.192 | completed trips 3843

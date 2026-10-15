@@ -6,7 +6,6 @@ Repositori ini berisi contoh simulasi kejadian diskrit menggunakan bahasa C dan 
 
 - `car_rental.c` — simulasi shuttle antara Terminal 1, Terminal 2, dan rental mobil.
 - `car_rental.out` — contoh hasil simulasi dari program `car_rental.c`.
-- `deskripsi_masalah.md` — interpretasi dan asumsi model untuk soal shuttle.
 - `simlib.c`, `simlib.h`, `simlibdefs.h` — implementasi dan definisi library SIMLIB yang dibutuhkan untuk kompilasi.
 - Berkas `.c`, `.in`, dan `.out` lainnya — contoh program SIMLIB tambahan, seperti antrean dan job shop.
 
@@ -51,8 +50,7 @@ Bus mengikuti rute berulang:
 Rental mobil (3) -> Terminal 1 -> Terminal 2 -> Rental mobil (3)
 ```
 
-Jarak antarlokasi adalah 4,5 mil (rental ke Terminal 1), 1 mil (Terminal 1 ke Terminal 2), dan 4,5 mil (Terminal 2 ke rental). Model memakai kapasitas bus 20 orang, kecepatan 30 mil/jam, waktu henti minimum 5 menit pada tiap lokasi, penumpang turun dan naik satu per satu dengan waktu acak masing-masing, dan antrean FIFO yang tidak dibatasi panjangnya. Laju kedatangan penumpang adalah 14 orang/jam di Terminal 1, 10 orang/jam di Terminal 2, dan 24 orang/jam di rental. Penumpang di terminal menuju rental; penumpang di rental memilih Terminal 1 (0,583) atau Terminal 2 (0,417). Rincian asumsi jarak, waktu naik/turun, dan interpretasi soal ada di [deskripsi_masalah.md](deskripsi_masalah.md).
-
+Jarak antarlokasi adalah 4,5 mil (rental ke Terminal 1), 1 mil (Terminal 1 ke Terminal 2), dan 4,5 mil (Terminal 2 ke rental). Model memakai kapasitas bus 20 orang, kecepatan 30 mil/jam, waktu henti minimum 5 menit pada tiap lokasi, penumpang turun dan naik satu per satu dengan waktu acak masing-masing, dan antrean FIFO yang tidak dibatasi panjangnya. Laju kedatangan penumpang adalah 14 orang/jam di Terminal 1, 10 orang/jam di Terminal 2, dan 24 orang/jam di rental. Penumpang di terminal menuju rental; penumpang di rental memilih Terminal 1 (0,583) atau Terminal 2 (0,417).
 ## Statistik output
 
 Laporan `car_rental.out` menampilkan:
