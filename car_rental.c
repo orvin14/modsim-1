@@ -37,9 +37,9 @@
 #define CAPACITY        20
 #define MIN_DWELL_TIME  5.0
 
-#define STREAM_DEST     4
-#define STREAM_UNLOAD   5
-#define STREAM_LOAD     6
+#define STREAM_UNLOAD   4
+#define STREAM_LOAD     5
+#define STREAM_DEST     6
 
 /* What the bus is doing right now. */
 #define TRAVELING       0
@@ -61,13 +61,17 @@ static int max_queue[3], max_onboard, departures3;
 
 static double arrivals[3], q_area[3], q_clock[3];
 static double delay_total[3], delay_max[3], delay_count[3];
-static double bus_area, bus_clock, person_total, person_max, people_done;
+static double bus_area, bus_clock, person_total, person_min, person_max, people_done;
 static double stop_total[3], stop_min[3], stop_max[3], stop_count[3];
 static double loop_total, loop_min, loop_max, last_departure3;
-static double trip_total[3], trip_max[3], trip_count[3];
-static double stop_start, onboard_arrival[CAPACITY];
+static double trip_total[3], trip_min[3], trip_max[3], trip_count[3];
+static double stop_start;
 
 static int bus_state = TRAVELING, min_dwell_over, next_location;
+
+/* The bus starts at the rental location and leaves at t = 0, which counts
+   as the first departure for loop times. */
+static int rental_departed = 1;
 static FILE *out;
 
 static void arrival(int loc);
@@ -90,7 +94,6 @@ int main(void)
     /* Initialize SIMLIB's event/list machinery and fix all random streams. */
     init_simlib();
     maxatr = 4;
-    maxlist = 7;
     for (int s = 1; s <= 6; s++) lcgrandst(123456789L + 97L * s, s); /* fixed streams */
 
     /* Schedule first passenger arrivals. Rates are people/hour, so convert
@@ -158,16 +161,18 @@ int main(void)
             departures3 ? loop_min : 0.0,
             loop_max);
 
-    fprintf(out, "\n(f) PERSON TIME IN SYSTEM BY ARRIVAL LOCATION (minutes)\nLocation  Average  Maximum  Completed\n");
+    fprintf(out, "\n(f) PERSON TIME IN SYSTEM BY ARRIVAL LOCATION (minutes)\nLocation  Average  Minimum  Maximum  Completed\n");
     for (int i = 0; i < 3; i++)
-        fprintf(out, "   %d       %7.3f  %7.3f    %6.0f\n",
+        fprintf(out, "   %d       %7.3f  %7.3f  %7.3f    %6.0f\n",
                 i + 1,
                 trip_count[i] ? trip_total[i] / trip_count[i] : 0.0,
+                trip_min[i],
                 trip_max[i],
                 trip_count[i]);
 
-    fprintf(out, "Overall: average %.3f | maximum %.3f | completed trips %.0f\n",
+    fprintf(out, "Overall: average %.3f | minimum %.3f | maximum %.3f | completed trips %.0f\n",
             people_done ? person_total / people_done : 0.0,
+            person_min,
             person_max,
             people_done);
 
@@ -252,6 +257,10 @@ static void unload_done(void)
     while (onboard[i].destination != location) i++;
 
     trip = sim_time - onboard[i].arrival;
+
+    if (people_done == 0 || trip < person_min) person_min = trip;
+    if (trip_count[onboard[i].origin - 1] == 0 || trip < trip_min[onboard[i].origin - 1])
+        trip_min[onboard[i].origin - 1] = trip;
 
     person_total += trip;
     people_done++;
@@ -345,7 +354,7 @@ static void depart(void)
 
     /* A loop is measured from one departure at rental to the next. */
     if (location == 3) {
-        if (last_departure3 > 0.0) {
+        if (rental_departed) {
             double loop = sim_time - last_departure3;
 
             loop_total += loop;
@@ -355,6 +364,7 @@ static void depart(void)
             if (loop > loop_max) loop_max = loop;
         }
         last_departure3 = sim_time;
+        rental_departed = 1;
     }
 
     bus_leave();
